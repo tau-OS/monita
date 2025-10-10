@@ -1,0 +1,8 @@
+build/
+builddir/
+_build/
+*~
+*.swp
+*.swo
+.*.sw[op]
+
