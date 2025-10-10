@@ -187,23 +187,27 @@ namespace Monita {
             var column = new Gtk.ColumnViewColumn(title, factory);
             column.set_expand(position == 0);
             
-            // Add sorter for each column
+            // Add sorter for each column - need to extract ProcessInfo from TreeListRow
             Gtk.Sorter sorter;
+            
+            // Create expression that extracts the item from TreeListRow
+            var tree_row_expr = new Gtk.PropertyExpression(typeof(Gtk.TreeListRow), null, "item");
+            
             switch(position) {
                 case 0:
-                    sorter = new Gtk.StringSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), null, "name"));
+                    sorter = new Gtk.StringSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), tree_row_expr, "name"));
                     break;
                 case 1:
-                    sorter = new Gtk.NumericSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), null, "cpu"));
+                    sorter = new Gtk.NumericSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), tree_row_expr, "cpu"));
                     break;
                 case 2:
-                    sorter = new Gtk.NumericSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), null, "ram"));
+                    sorter = new Gtk.NumericSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), tree_row_expr, "ram"));
                     break;
                 case 3:
-                    sorter = new Gtk.NumericSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), null, "pid"));
+                    sorter = new Gtk.NumericSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), tree_row_expr, "pid"));
                     break;
                 default:
-                    sorter = new Gtk.StringSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), null, "name"));
+                    sorter = new Gtk.StringSorter(new Gtk.PropertyExpression(typeof(ProcessInfo), tree_row_expr, "name"));
                     break;
             }
             
