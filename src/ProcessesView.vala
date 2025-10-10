@@ -5,6 +5,7 @@ namespace Monita {
     public class ProcessesView : Gtk.Box {
         private Gtk.ColumnView column_view;
         private GLib.ListStore list_store;
+        private Gtk.TreeListModel tree_model;
         private Gtk.SortListModel sort_model;
         private Gtk.SingleSelection selection_model;
         private He.BottomBar bottom_bar;
@@ -14,7 +15,13 @@ namespace Monita {
 
             list_store = new GLib.ListStore(typeof(ProcessInfo));
             
-            sort_model = new Gtk.SortListModel(list_store, null);
+            // Create tree model with expand function
+            tree_model = new Gtk.TreeListModel(list_store, false, true, (item) => {
+                var process = (ProcessInfo)item;
+                return process.get_children();
+            });
+            
+            sort_model = new Gtk.SortListModel(tree_model, null);
             selection_model = new Gtk.SingleSelection(sort_model);
             selection_model.set_autoselect(false);
             selection_model.set_can_unselect(true);
@@ -91,23 +98,89 @@ namespace Monita {
             });
         }
 
+        private void update_label(Gtk.Widget widget, ProcessInfo process, int position) {
+            Gtk.Label label;
+            if (position == 0 && widget is Gtk.Box) {
+                // First column: Box -> TreeExpander -> Label
+                var box = (Gtk.Box)widget;
+                var expander = (Gtk.TreeExpander)box.get_first_child();
+                label = (Gtk.Label)expander.get_child();
+            } else {
+                label = (Gtk.Label)widget;
+            }
+            
+            switch(position) {
+                case 0: label.set_label(process.name); break;
+                case 1: label.set_label("%.2f".printf(process.cpu)); break;
+                case 2: label.set_label("%.2f".printf(process.ram)); break;
+                case 3: label.set_label("%d".printf(process.pid)); break;
+            }
+        }
+
         private void add_column(string title, int position) {
             var factory = new Gtk.SignalListItemFactory();
             factory.setup.connect((item) => {
-                var label = new Gtk.Label("");
-                label.set_xalign(0);
-                ((Gtk.ListItem)item).set_child(label);
+                var list_item = (Gtk.ListItem)item;
+                
+                if (position == 0) {
+                    // First column: expander + label
+                    var box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 6);
+                    var expander = new Gtk.TreeExpander();
+                    var label = new Gtk.Label("");
+                    label.set_xalign(0);
+                    expander.set_child(label);
+                    box.append(expander);
+                    list_item.set_child(box);
+                } else {
+                    var label = new Gtk.Label("");
+                    label.set_xalign(0);
+                    list_item.set_child(label);
+                }
             });
             factory.bind.connect((item) => {
                 var list_item = (Gtk.ListItem)item;
-                var process = (ProcessInfo)list_item.get_item();
-                var label = (Gtk.Label)list_item.get_child();
+                var tree_row = (Gtk.TreeListRow)list_item.get_item();
+                var process = (ProcessInfo)tree_row.get_item();
                 
-                switch(position) {
-                    case 0: label.set_label(process.name); break;
-                    case 1: label.set_label("%.1f".printf(process.cpu)); break;
-                    case 2: label.set_label("%.1f".printf(process.ram)); break;
-                    case 3: label.set_label("%d".printf(process.pid)); break;
+                if (position == 0) {
+                    var box = (Gtk.Box)list_item.get_child();
+                    var expander = (Gtk.TreeExpander)box.get_first_child();
+                    expander.set_list_row(tree_row);
+                }
+                
+                var widget = list_item.get_child();
+                var label = widget;
+                
+                // Update label initially
+                update_label(label, process, position);
+                
+                // Watch for property changes and update label
+                ulong handler_id = 0;
+                if (position == 1) {
+                    handler_id = process.notify["cpu"].connect(() => {
+                        update_label(label, process, position);
+                    });
+                } else if (position == 2) {
+                    handler_id = process.notify["ram"].connect(() => {
+                        update_label(label, process, position);
+                    });
+                }
+                
+                // Store handler ID to disconnect later
+                if (handler_id > 0) {
+                    list_item.set_data("handler_id", (void*)(uintptr)handler_id);
+                }
+            });
+            
+            factory.unbind.connect((item) => {
+                var list_item = (Gtk.ListItem)item;
+                var process = (ProcessInfo)list_item.get_item();
+                
+                // Disconnect signal handler
+                void* handler_ptr = list_item.get_data<void*>("handler_id");
+                uintptr handler_id = (uintptr)handler_ptr;
+                if (handler_id > 0 && process != null) {
+                    process.disconnect(handler_id);
                 }
             });
 
@@ -159,7 +232,11 @@ namespace Monita {
         }
 
         public ProcessInfo? get_selected_process() {
-            return (ProcessInfo)selection_model.get_selected_item();
+            var tree_row = (Gtk.TreeListRow?)selection_model.get_selected_item();
+            if (tree_row != null) {
+                return (ProcessInfo)tree_row.get_item();
+            }
+            return null;
         }
 
         private void populate_processes() {
@@ -172,40 +249,114 @@ namespace Monita {
             
             var processes = SystemUtils.get_processes();
             
-            // Create a map by PID for efficient lookup
-            var pid_map = new Gee.HashMap<int, ProcessInfo>();
+            // Group processes by name
+            var name_groups = new Gee.HashMap<string, Gee.ArrayList<ProcessInfo>>();
             foreach (var process in processes) {
-                pid_map[process.pid] = process;
+                if (!name_groups.has_key(process.name)) {
+                    name_groups[process.name] = new Gee.ArrayList<ProcessInfo>();
+                }
+                name_groups[process.name].add(process);
             }
             
-            // Track which PIDs we've seen
-            var seen_pids = new Gee.HashSet<int>();
+            // Build parent-child structure: highest RAM = parent, rest = children
+            var parent_processes = new Gee.ArrayList<ProcessInfo>();
+            var pid_to_parent = new Gee.HashMap<int, ProcessInfo>();
             
-            // Update existing processes or remove stale ones
+            foreach (var name in name_groups.keys) {
+                var group = name_groups[name];
+                
+                // Sort by RAM (descending)
+                group.sort((a, b) => {
+                    if (a.ram > b.ram) return -1;
+                    if (a.ram < b.ram) return 1;
+                    return 0;
+                });
+                
+                // First one (highest RAM) is the parent
+                var parent = group[0];
+                parent_processes.add(parent);
+                pid_to_parent[parent.pid] = parent;
+                
+                // Rest are children
+                for (int i = 1; i < group.size; i++) {
+                    parent.add_child(group[i]);
+                    pid_to_parent[group[i].pid] = parent;
+                }
+            }
+            
+            // Create a map by PID for efficient lookup
+            var pid_map = new Gee.HashMap<int, ProcessInfo>();
+            foreach (var parent in parent_processes) {
+                pid_map[parent.pid] = parent;
+                var children = parent.get_children();
+                if (children != null) {
+                    for (uint i = 0; i < children.get_n_items(); i++) {
+                        var child = (ProcessInfo)children.get_item(i);
+                        pid_map[child.pid] = child;
+                    }
+                }
+            }
+            
+            // Track which parent PIDs we've seen
+            var seen_parent_pids = new Gee.HashSet<int>();
+            
+            // Update existing parent processes or remove stale ones
             uint i = 0;
             while (i < list_store.get_n_items()) {
                 var item = list_store.get_item(i);
                 if (item != null) {
-                    var existing_process = (ProcessInfo)item;
-                    if (pid_map.has_key(existing_process.pid)) {
-                        // Get the new process data
-                        var new_process = pid_map[existing_process.pid];
+                    var existing_parent = (ProcessInfo)item;
+                    
+                    // Find if this parent still exists
+                    ProcessInfo? new_parent = null;
+                    foreach (var parent in parent_processes) {
+                        if (parent.pid == existing_parent.pid) {
+                            new_parent = parent;
+                            break;
+                        }
+                    }
+                    
+                    if (new_parent != null) {
+                        // Check if children count changed
+                        bool children_changed = false;
+                        var existing_children = existing_parent.get_children();
+                        var new_children = new_parent.get_children();
                         
-                        // Check if name changed - if so, we need to replace the object
-                        // to ensure UI updates (property updates don't always trigger list view refresh)
-                        if (existing_process.name != new_process.name) {
-                            list_store.remove(i);
-                            list_store.insert(i, new_process);
-                        } else {
-                            // Just update CPU and RAM if name hasn't changed
-                            existing_process.cpu = new_process.cpu;
-                            existing_process.ram = new_process.ram;
+                        if ((existing_children == null) != (new_children == null)) {
+                            children_changed = true;
+                        } else if (existing_children != null && new_children != null) {
+                            if (existing_children.get_n_items() != new_children.get_n_items()) {
+                                children_changed = true;
+                            }
                         }
                         
-                        seen_pids.add(new_process.pid);
+                        if (children_changed || existing_parent.name != new_parent.name) {
+                            // Structure changed, need to replace
+                            list_store.remove(i);
+                            list_store.insert(i, new_parent);
+                        } else {
+                            // Just update properties
+                            existing_parent.cpu = new_parent.cpu;
+                            existing_parent.ram = new_parent.ram;
+                            
+                            // Update children properties if they exist
+                            if (existing_children != null && new_children != null) {
+                                for (uint j = 0; j < existing_children.get_n_items(); j++) {
+                                    var existing_child = (ProcessInfo)existing_children.get_item(j);
+                                    var new_child = (ProcessInfo)new_children.get_item(j);
+                                    existing_child.cpu = new_child.cpu;
+                                    existing_child.ram = new_child.ram;
+                                    if (existing_child.name != new_child.name) {
+                                        existing_child.name = new_child.name;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        seen_parent_pids.add(new_parent.pid);
                         i++;
                     } else {
-                        // Process no longer exists, remove it
+                        // Parent no longer exists, remove it
                         list_store.remove(i);
                     }
                 } else {
@@ -213,27 +364,11 @@ namespace Monita {
                 }
             }
             
-            // Deduplicate new processes by name (keep highest RAM usage)
-            var name_map = new Gee.HashMap<string, ProcessInfo>();
-            foreach (var process in processes) {
-                if (seen_pids.contains(process.pid)) {
-                    continue; // Already in list
+            // Add new parent processes
+            foreach (var parent in parent_processes) {
+                if (!seen_parent_pids.contains(parent.pid)) {
+                    list_store.append(parent);
                 }
-                
-                if (name_map.has_key(process.name)) {
-                    var existing = name_map[process.name];
-                    // Keep the one with more RAM
-                    if (process.ram > existing.ram) {
-                        name_map[process.name] = process;
-                    }
-                } else {
-                    name_map[process.name] = process;
-                }
-            }
-            
-            // Add new processes
-            foreach (var process in name_map.values) {
-                list_store.append(process);
             }
             
             // Restore selection by PID
@@ -242,7 +377,8 @@ namespace Monita {
                 for (uint i2 = 0; i2 < n_items; i2++) {
                     var item = sort_model.get_item(i2);
                     if (item != null) {
-                        var process = (ProcessInfo)item;
+                        var tree_row = (Gtk.TreeListRow)item;
+                        var process = (ProcessInfo)tree_row.get_item();
                         if (process.pid == selected_pid) {
                             selection_model.set_selected(i2);
                             break;

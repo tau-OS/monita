@@ -11,6 +11,13 @@ namespace Monita {
         private static uint64 prev_gpu_timestamp = 0;
         private static string? selected_gpu_card = null;
         
+        // Track previous CPU times for processes
+        private class ProcessCpuData {
+            public uint64 total_time;
+        }
+        private static Gee.HashMap<int, ProcessCpuData>? prev_process_cpu = null;
+        private static uint64 prev_system_cpu_time = 0;
+        
         public static int get_cpu_cores() {
             var sysinfo = GTop.glibtop_get_sysinfo();
             return (int)sysinfo.ncpu;
@@ -70,17 +77,17 @@ namespace Monita {
             GTop.get_uptime(out uptime);
             
             int64 uptime_seconds = (int64)uptime.uptime;
-            int days = (int)(uptime_seconds / 86400);
-            int hours = (int)((uptime_seconds % 86400) / 3600);
-            int minutes = (int)((uptime_seconds % 3600) / 60);
-            
-            if (days > 0) {
-                return "%dd %dh %dm".printf(days, hours, minutes);
-            } else if (hours > 0) {
-                return "%dh %dm".printf(hours, minutes);
-            } else {
-                return "%dm".printf(minutes);
-            }
+                    int days = (int)(uptime_seconds / 86400);
+                    int hours = (int)((uptime_seconds % 86400) / 3600);
+                    int minutes = (int)((uptime_seconds % 3600) / 60);
+                    
+                    if (days > 0) {
+                        return "%dd %dh %dm".printf(days, hours, minutes);
+                    } else if (hours > 0) {
+                        return "%dh %dm".printf(hours, minutes);
+                    } else {
+                        return "%dm".printf(minutes);
+                    }
         }
 
         private static bool is_integrated_gpu(string card_name) {
@@ -375,11 +382,32 @@ namespace Monita {
         }
 
         public static Gee.ArrayList<ProcessInfo> get_processes() {
-            // Use HashMap to deduplicate by name, keeping highest RAM usage
-            var process_map = new Gee.HashMap<string, ProcessInfo>();
+            // Initialize tracking map if needed
+            if (prev_process_cpu == null) {
+                prev_process_cpu = new Gee.HashMap<int, ProcessCpuData>();
+            }
+            
+            // Get current system CPU time
+            GTop.Cpu cpu;
+            GTop.get_cpu(out cpu);
+            uint64 system_cpu_time = cpu.total;
+            
+            // Calculate system CPU delta
+            uint64 system_cpu_delta = 0;
+            if (prev_system_cpu_time > 0) {
+                system_cpu_delta = system_cpu_time - prev_system_cpu_time;
+            }
+            
+            // Track new CPU data for next iteration
+            var new_process_cpu = new Gee.HashMap<int, ProcessCpuData>();
+            
+            // Collect all processes (no deduplication)
+            var processes = new Gee.ArrayList<ProcessInfo>();
             
             GTop.ProcList proclist;
             var pids = GTop.get_proclist(out proclist, GTop.GLIBTOP_KERN_PROC_ALL, 0);
+            
+            int cpu_cores = get_cpu_cores();
             
             for (int i = 0; i < proclist.number; i++) {
                 int pid = (int)pids[i];
@@ -426,16 +454,28 @@ namespace Monita {
                 GTop.ProcTime proc_time;
                 GTop.get_proc_time(out proc_time, pid);
                 
-                // Calculate CPU percentage
-                GTop.Cpu cpu;
-                GTop.get_cpu(out cpu);
-                
+                // Calculate CPU usage based on delta
                 double cpu_usage = 0.0;
-                if (proc_time.rtime > 0 && cpu.frequency > 0) {
-                    // Calculate CPU percentage based on total time
-                    uint64 total_time = proc_time.utime + proc_time.stime;
-                    cpu_usage = (double)total_time / (double)proc_time.rtime * 100.0;
+                
+                // Total CPU time (utime + stime)
+                uint64 total_time = proc_time.utime + proc_time.stime;
+                
+                if (prev_process_cpu.has_key(pid) && system_cpu_delta > 0) {
+                    var prev = prev_process_cpu[pid];
+                    uint64 process_cpu_delta = total_time - prev.total_time;
+                    
+                    // CPU percentage = (process_cpu_delta / system_cpu_delta) * 100 * num_cores
+                    cpu_usage = ((double)process_cpu_delta / (double)system_cpu_delta) * 100.0 * (double)cpu_cores;
+                    
+                    // Clamp to 0-100 range (per core)
+                    if (cpu_usage < 0.0) cpu_usage = 0.0;
+                    if (cpu_usage > 100.0) cpu_usage = 100.0;
                 }
+                
+                // Store current values for next iteration
+                var cpu_data = new ProcessCpuData();
+                cpu_data.total_time = total_time;
+                new_process_cpu[pid] = cpu_data;
                 
                 // Convert memory to MB
                 double ram = (double)proc_mem.resident / (1024.0 * 1024.0);
@@ -447,17 +487,12 @@ namespace Monita {
                     pid = pid
                 };
                 
-                // Keep only the process with highest RAM for each name
-                if (!process_map.has_key(proc_name) || process_map[proc_name].ram < ram) {
-                    process_map[proc_name] = process;
-                }
-            }
-            
-            // Convert map values to ArrayList
-            var processes = new Gee.ArrayList<ProcessInfo>();
-            foreach (var process in process_map.values) {
                 processes.add(process);
             }
+            
+            // Update tracking for next iteration
+            prev_process_cpu = new_process_cpu;
+            prev_system_cpu_time = system_cpu_time;
             
             return processes;
         }
