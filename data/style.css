@@ -1,0 +1,10 @@
+frame {
+    border-radius: 12px;
+    box-shadow: none;
+    border: none;
+    background: @surface_container_lowest_bg_color;
+}
+
+.iconic-button.destructive-action {
+    color: @error_color;
+}

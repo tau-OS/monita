@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories=Utilities;
+Comment=A modern beautiful system monitor
+Exec=com.fyralabs.Monita %U
+Icon=com.fyralabs.Monita
+Name=Monita
+StartupNotify=true
+Type=Application
