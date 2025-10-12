@@ -437,7 +437,31 @@ namespace Monita {
                     }
                 }
             } else {
+                var unique_processes = new Gee.HashMap<string, ProcessInfo> ();
+
                 foreach (var process in filtered_processes) {
+                    string key;
+                    if (process.display_name != null && process.display_name.length > 0) {
+                        key = process.display_name;
+                    } else if (process.sort_group_name != null && process.sort_group_name.length > 0) {
+                        key = process.sort_group_name;
+                    } else if (process.name != null && process.name.length > 0) {
+                        key = process.name;
+                    } else {
+                        key = "%d".printf(process.pid);
+                    }
+
+                    if (unique_processes.has_key(key)) {
+                        var existing = unique_processes[key];
+                        if (process.ram > existing.ram) {
+                            unique_processes[key] = process;
+                        }
+                    } else {
+                        unique_processes[key] = process;
+                    }
+                }
+
+                foreach (var process in unique_processes.values) {
                     process.is_child = false;
                     process.sort_group_pid = process.pid;
                     if (process.display_name != null && process.display_name.length > 0) {
