@@ -6,6 +6,7 @@ add_project_arguments(['--vapidir', meson.project_source_root() / 'vapi'], langu
 
 dependencies = [
     dependency('gtk4'),
+    dependency('gio-2.0'),
     dependency('libhelium-1'),
     dependency('glib-2.0'),
     dependency('gobject-2.0'),
