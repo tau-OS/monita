@@ -11,9 +11,11 @@ namespace Monita {
         private Gtk.SortListModel sort_model;
         private Gtk.SingleSelection selection_model;
         private He.BottomBar bottom_bar;
+        private bool show_only_apps;
 
-        public ProcessesView() {
+        public ProcessesView(bool show_only_apps = true) {
             Object(orientation: Gtk.Orientation.VERTICAL, spacing: 0, margin_top: 0, margin_bottom: 0, margin_start: 18, margin_end: 18);
+            this.show_only_apps = show_only_apps;
 
             list_store = new GLib.ListStore(typeof (ProcessInfo));
 
@@ -35,7 +37,14 @@ namespace Monita {
             var sorter = column_view.get_sorter();
             sort_model.set_sorter(sorter);
 
-            add_column("Process Name", 0);
+            string primary_title;
+            if (show_only_apps) {
+                primary_title = "App Name";
+            } else {
+                primary_title = "Process Name";
+            }
+
+            add_column(primary_title, 0);
             add_column("CPU %", 1);
             add_column("RAM", 2);
             add_column("Process ID", 3);
@@ -142,7 +151,7 @@ namespace Monita {
                     if (process.icon != null) {
                         image.set_from_gicon(process.icon);
                     } else {
-                        image.set_from_icon_name("application-x-executable");
+                        image.set_from_icon_name("application-x-executable-symbolic");
                     }
                 }
                 break;
@@ -190,6 +199,9 @@ namespace Monita {
                 var tree_row = (Gtk.TreeListRow) list_item.get_item();
                 var process = (ProcessInfo) tree_row.get_item();
 
+                // Clear any stale handler reference before rebinding
+                list_item.set_data("handler_id", null);
+
                 if (position == 0) {
                     var box = (Gtk.Box) list_item.get_child();
                     var expander = (Gtk.TreeExpander) box.get_first_child();
@@ -222,13 +234,19 @@ namespace Monita {
 
             factory.unbind.connect((item) => {
                 var list_item = (Gtk.ListItem) item;
-                var process = (ProcessInfo) list_item.get_item();
+                var handler_ptr = list_item.steal_data<void*> ("handler_id");
+                if (handler_ptr != null) {
+                    ulong handler_id = (ulong) (uintptr) handler_ptr;
 
-                // Disconnect signal handler
-                void* handler_ptr = list_item.get_data<void*> ("handler_id");
-                uintptr handler_id = (uintptr) handler_ptr;
-                if (handler_id > 0 && process != null) {
-                    process.disconnect(handler_id);
+                    var item_obj = list_item.get_item();
+                    if (item_obj is Gtk.TreeListRow) {
+                        var tree_row = (Gtk.TreeListRow) item_obj;
+                        var process_obj = tree_row.get_item();
+                        if (process_obj is ProcessInfo) {
+                            var process = (ProcessInfo) process_obj;
+                            process.disconnect(handler_id);
+                        }
+                    }
                 }
             });
 
@@ -356,51 +374,80 @@ namespace Monita {
 
             var processes = SystemUtils.get_processes();
 
-            // Filter: Only include app processes (not background/system)
-            var app_processes = new Gee.ArrayList<ProcessInfo> ();
+            var filtered_processes = new Gee.ArrayList<ProcessInfo> ();
             foreach (var process in processes) {
-                if (process.is_app) {
-                    app_processes.add(process);
+                if (show_only_apps && !process.is_app) {
+                    continue;
                 }
+                filtered_processes.add(process);
             }
 
-            // Group by app name (or another grouping key)
-            var app_groups = new Gee.HashMap<string, Gee.ArrayList<ProcessInfo>> ();
-            foreach (var process in app_processes) {
-                if (!app_groups.has_key(process.name)) {
-                    app_groups[process.name] = new Gee.ArrayList<ProcessInfo> ();
-                }
-                app_groups[process.name].add(process);
-            }
-
-            // Build parent-child structure: first process is parent, siblings as children
             var parent_processes = new Gee.ArrayList<ProcessInfo> ();
-            foreach (var name in app_groups.keys) {
-                var group = app_groups[name];
 
-                // Sort or pick the main process (e.g., by RAM, PID, etc.)
-                group.sort((a, b) => {
-                    if (a.ram > b.ram)return -1;
-                    if (a.ram < b.ram)return 1;
-                    return 0;
-                });
+            if (show_only_apps) {
+                var app_groups = new Gee.HashMap<string, Gee.ArrayList<ProcessInfo>> ();
+                foreach (var process in filtered_processes) {
+                    string group_key;
+                    if (process.sort_group_name != null && process.sort_group_name.length > 0) {
+                        group_key = process.sort_group_name;
+                    } else if (process.display_name != null && process.display_name.length > 0) {
+                        group_key = process.display_name;
+                    } else {
+                        group_key = process.name;
+                    }
 
-                var parent = group[0];
-                parent.is_child = false;
-                parent.sort_group_pid = parent.pid;
-                parent.sort_group_name = parent.display_name != null && parent.display_name.length > 0 ? parent.display_name : parent.name;
-                parent.sort_group_cpu = parent.cpu;
-                parent.sort_group_ram = parent.ram;
-                parent_processes.add(parent);
+                    if (!app_groups.has_key(group_key)) {
+                        app_groups[group_key] = new Gee.ArrayList<ProcessInfo> ();
+                    }
+                    app_groups[group_key].add(process);
+                }
 
-                // Add siblings as children (skip parent itself)
-                for (int i = 1; i < group.size; i++) {
-                    var child = group[i];
-                    child.sort_group_cpu = parent.cpu;
-                    child.sort_group_ram = parent.ram;
-                    child.sort_group_pid = parent.pid;
-                    child.sort_group_name = parent.display_name != null && parent.display_name.length > 0 ? parent.display_name : parent.name;
-                    parent.add_child(child);
+                foreach (var key in app_groups.keys) {
+                    var group = app_groups[key];
+
+                    group.sort((a, b) => {
+                        if (a.ram > b.ram)return -1;
+                        if (a.ram < b.ram)return 1;
+                        return 0;
+                    });
+
+                    var parent = group[0];
+                    parent.is_child = false;
+                    parent.sort_group_pid = parent.pid;
+                    if (parent.display_name != null && parent.display_name.length > 0) {
+                        parent.sort_group_name = parent.display_name;
+                    } else if (parent.sort_group_name == null || parent.sort_group_name.length == 0) {
+                        parent.sort_group_name = parent.name;
+                    }
+                    parent.sort_group_cpu = parent.cpu;
+                    parent.sort_group_ram = parent.ram;
+                    parent_processes.add(parent);
+
+                    for (int i = 1; i < group.size; i++) {
+                        var child = group[i];
+                        child.sort_group_cpu = parent.cpu;
+                        child.sort_group_ram = parent.ram;
+                        child.sort_group_pid = parent.pid;
+                        if (parent.display_name != null && parent.display_name.length > 0) {
+                            child.sort_group_name = parent.display_name;
+                        } else {
+                            child.sort_group_name = parent.name;
+                        }
+                        parent.add_child(child);
+                    }
+                }
+            } else {
+                foreach (var process in filtered_processes) {
+                    process.is_child = false;
+                    process.sort_group_pid = process.pid;
+                    if (process.display_name != null && process.display_name.length > 0) {
+                        process.sort_group_name = process.display_name;
+                    } else if (process.sort_group_name == null || process.sort_group_name.length == 0) {
+                        process.sort_group_name = process.name;
+                    }
+                    process.sort_group_cpu = process.cpu;
+                    process.sort_group_ram = process.ram;
+                    parent_processes.add(process);
                 }
             }
 

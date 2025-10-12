@@ -352,7 +352,7 @@ namespace Monita {
             GTop.get_mem(out mem);
 
             if (mem.total > 0) {
-                return ((double) mem.used * 100.0) / (double) mem.total;
+                return ((double) mem.user * 100.0) / (double) mem.total;
             }
 
             return 0.0;

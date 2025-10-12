@@ -5,6 +5,7 @@ namespace Monita {
     public class MainWindow : He.ApplicationWindow {
         private Gtk.Stack stack;
         private OverviewView overview_view;
+        private ProcessesView apps_view;
         private ProcessesView processes_view;
 
         public MainWindow(He.Application app) {
@@ -23,9 +24,9 @@ namespace Monita {
             var menu_button = new Gtk.MenuButton();
             menu_button.set_icon_name("open-menu-symbolic");
             menu_button.set_menu_model(menu);
-            var popover = (Gtk.PopoverMenu)menu_button.get_popover();
+            var popover = (Gtk.PopoverMenu) menu_button.get_popover();
             popover.set_has_arrow(false);
-            
+
             header_bar.append_menu(menu_button);
 
             stack = new Gtk.Stack();
@@ -33,14 +34,16 @@ namespace Monita {
             stack_switcher.stack = stack;
 
             overview_view = new OverviewView();
-            processes_view = new ProcessesView();
+            apps_view = new ProcessesView(true);
+            processes_view = new ProcessesView(false);
 
             stack.add_titled(overview_view, "overview", "Overview");
+            stack.add_titled(apps_view, "apps", "Apps");
             stack.add_titled(processes_view, "processes", "Processes");
 
-			var main_box = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
-			main_box.append (header_bar);
-			main_box.append (stack);
+            var main_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
+            main_box.append(header_bar);
+            main_box.append(stack);
 
             var overlay = new Gtk.Overlay();
             overlay.set_child(main_box);
@@ -48,8 +51,8 @@ namespace Monita {
         }
 
         public void show_process_info() {
-            var process = processes_view.get_selected_process();
-            if (process == null) return;
+            var process = get_active_process();
+            if (process == null)return;
 
             var dialog = new He.Window();
             dialog.set_transient_for(this);
@@ -69,7 +72,13 @@ namespace Monita {
             content_box.set_margin_end(12);
 
             var name_label = new Gtk.Label(null);
-            name_label.set_markup("<span size='x-large' weight='bold'>%s</span>".printf(process.name));
+            string header_text;
+            if (process.display_name != null && process.display_name.length > 0) {
+                header_text = process.display_name;
+            } else {
+                header_text = process.name;
+            }
+            name_label.set_markup("<span size='x-large' weight='bold'>%s</span>".printf(header_text));
             name_label.set_xalign(0);
             content_box.append(name_label);
 
@@ -96,47 +105,76 @@ namespace Monita {
             var label = new Gtk.Label(label_text);
             label.add_css_class("dim-label");
             label.set_xalign(0);
-            
+
             var value = new Gtk.Label(value_text);
             value.set_xalign(0);
             value.set_selectable(true);
-            
+
             grid.attach(label, 0, row, 1, 1);
             grid.attach(value, 1, row, 1, 1);
         }
 
         public void stop_process() {
-            var process = processes_view.get_selected_process();
-            if (process == null) return;
+            var process = get_active_process();
+            if (process == null)return;
 
-            Posix.kill((Posix.pid_t)process.pid, Posix.Signal.TERM);
+            Posix.kill((Posix.pid_t) process.pid, Posix.Signal.TERM);
         }
 
         public void halt_process() {
-            var process = processes_view.get_selected_process();
-            if (process == null) return;
+            var process = get_active_process();
+            if (process == null)return;
 
-            Posix.kill((Posix.pid_t)process.pid, Posix.Signal.KILL);
+            Posix.kill((Posix.pid_t) process.pid, Posix.Signal.KILL);
+        }
+
+        private ProcessesView ? get_active_process_view() {
+            var visible = stack.get_visible_child();
+            if (visible == processes_view) {
+                return processes_view;
+            }
+
+            if (visible == apps_view) {
+                return apps_view;
+            }
+
+            return null;
+        }
+
+        private ProcessInfo ? get_active_process() {
+            var active_view = get_active_process_view();
+            if (active_view != null) {
+                var selected = active_view.get_selected_process();
+                if (selected != null) {
+                    return selected;
+                }
+            }
+
+            var apps_selected = apps_view.get_selected_process();
+            if (apps_selected != null) {
+                return apps_selected;
+            }
+
+            return processes_view.get_selected_process();
         }
 
         public void show_about_dialog() {
             var about = new He.AboutWindow(
-                this,
-                "Monita",
-                "com.fyralabs.Monita",
-                "1.0.0",
-                "com.fyralabs.Monita",
-                "https://github.com/tau-os/monita",
-                "https://github.com/tau-os/monita/issues",
-                "https://github.com/tau-os/monita",
-                {"Fyra Labs"},
-                {"Fyra Labs"},
-                2025,
-                He.AboutWindow.Licenses.GPLV3,
-                He.Colors.RED
+                                           this,
+                                           "Monita",
+                                           "com.fyralabs.Monita",
+                                           "1.0.0",
+                                           "com.fyralabs.Monita",
+                                           "https://github.com/tau-os/monita",
+                                           "https://github.com/tau-os/monita/issues",
+                                           "https://github.com/tau-os/monita",
+                                           { "Fyra Labs" },
+                                           { "Fyra Labs" },
+                                           2025,
+                                           He.AboutWindow.Licenses.GPLV3,
+                                           He.Colors.RED
             );
             about.present();
         }
     }
 }
-
