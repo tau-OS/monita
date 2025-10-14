@@ -365,7 +365,7 @@ namespace Monita {
             GTop.get_mem(out mem);
 
             result[0] = (double) mem.user / (1024.0 * 1024.0 * 1024.0); // Used in GB
-            result[1] = (double) mem.total / (1024.0 * 1024.0 * 1024.0); // Total in GB
+            result[1] = (double) Math.ceil(mem.total / (1024.0 * 1024.0 * 1024.0)); // Total in GB
 
             return result;
         }

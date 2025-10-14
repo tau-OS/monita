@@ -43,6 +43,8 @@ namespace Monita {
             var grid = new Gtk.Grid();
             grid.set_row_spacing(12);
             grid.set_column_spacing(12);
+            grid.set_column_homogeneous(true);
+            grid.set_row_homogeneous(true);
 
             var cpu_card = create_cpu_card();
             var memory_card = create_memory_card();
@@ -63,9 +65,11 @@ namespace Monita {
             GLib.Timeout.add(1000, update_stats);
         }
 
-        private Gtk.Frame create_system_info_card() {
-            var frame = new Gtk.Frame(null);
-            
+        private He.Bin create_system_info_card() {
+            var frame = new He.Bin();
+            frame.add_css_class("x-large-radius");
+            frame.add_css_class("surface-container-low-bg-color");
+
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 12);
             box.set_margin_top(12);
             box.set_margin_bottom(12);
@@ -80,14 +84,15 @@ namespace Monita {
             var info_grid = new Gtk.Grid();
             info_grid.set_row_spacing(8);
             info_grid.set_column_spacing(16);
-            info_grid.set_column_homogeneous(false);
+            info_grid.set_row_homogeneous(true);
+            info_grid.set_hexpand(true);
 
             // Left column
             var cpu_label = new Gtk.Label("CPU:");
             cpu_label.set_xalign(1);
             cpu_label.add_css_class("dim-label");
             info_grid.attach(cpu_label, 0, 0, 1, 1);
-            
+
             var cpu_value = new Gtk.Label("%d cores".printf(cpu_cores));
             cpu_value.set_xalign(0);
             info_grid.attach(cpu_value, 1, 0, 1, 1);
@@ -96,7 +101,7 @@ namespace Monita {
             ram_label.set_xalign(1);
             ram_label.add_css_class("dim-label");
             info_grid.attach(ram_label, 0, 1, 1, 1);
-            
+
             var ram_value = new Gtk.Label("%.0f GB".printf(SystemUtils.get_total_memory_gb()));
             ram_value.set_xalign(0);
             info_grid.attach(ram_value, 1, 1, 1, 1);
@@ -105,7 +110,7 @@ namespace Monita {
             gpu_label.set_xalign(1);
             gpu_label.add_css_class("dim-label");
             info_grid.attach(gpu_label, 0, 2, 1, 1);
-            
+
             var gpu_value = new Gtk.Label(SystemUtils.get_gpu_name());
             gpu_value.set_xalign(0);
             info_grid.attach(gpu_value, 1, 2, 1, 1);
@@ -115,7 +120,7 @@ namespace Monita {
             network_label.set_xalign(1);
             network_label.add_css_class("dim-label");
             info_grid.attach(network_label, 2, 0, 1, 1);
-            
+
             var network_value = new Gtk.Label(SystemUtils.get_active_network_interface());
             network_value.set_xalign(0);
             info_grid.attach(network_value, 3, 0, 1, 1);
@@ -124,19 +129,21 @@ namespace Monita {
             uptime_label_text.set_xalign(1);
             uptime_label_text.add_css_class("dim-label");
             info_grid.attach(uptime_label_text, 2, 1, 1, 1);
-            
+
             uptime_label = new Gtk.Label("");
             uptime_label.set_xalign(0);
             info_grid.attach(uptime_label, 3, 1, 1, 1);
 
             box.append(info_grid);
-            frame.set_child(box);
+            frame.child = (box);
             return frame;
         }
 
-        private Gtk.Frame create_cpu_card() {
-            var frame = new Gtk.Frame(null);
-            
+        private He.Bin create_cpu_card() {
+            var frame = new He.Bin();
+            frame.add_css_class("x-large-radius");
+            frame.add_css_class("surface-container-lowest-bg-color");
+
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
             box.set_margin_bottom(12);
@@ -166,13 +173,15 @@ namespace Monita {
             cpu_graph.set_margin_top(8);
             box.append(cpu_graph);
 
-            frame.set_child(box);
+            frame.child = (box);
             return frame;
         }
 
-        private Gtk.Frame create_memory_card() {
-            var frame = new Gtk.Frame(null);
-            
+        private He.Bin create_memory_card() {
+            var frame = new He.Bin();
+            frame.add_css_class("x-large-radius");
+            frame.add_css_class("surface-container-lowest-bg-color");
+
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
             box.set_margin_bottom(12);
@@ -207,13 +216,15 @@ namespace Monita {
             memory_graph.set_margin_top(8);
             box.append(memory_graph);
 
-            frame.set_child(box);
+            frame.child = (box);
             return frame;
         }
 
-        private Gtk.Frame create_network_card() {
-            var frame = new Gtk.Frame(null);
-            
+        private He.Bin create_network_card() {
+            var frame = new He.Bin();
+            frame.add_css_class("x-large-radius");
+            frame.add_css_class("surface-container-lowest-bg-color");
+
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
             box.set_margin_bottom(12);
@@ -230,16 +241,16 @@ namespace Monita {
             // Add mini ViewSwitcher for Ethernet/WiFi
             var network_switcher = new He.ViewSwitcher();
             network_switcher.add_css_class("mini");
-            
+
             var network_stack = new Gtk.Stack();
             network_switcher.stack = network_stack;
-            
+
             // Add placeholder pages for the switcher
             var eth_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             var wifi_box = new Gtk.Box(Gtk.Orientation.VERTICAL, 0);
             network_stack.add_titled(eth_box, "ethernet", "Ethernet");
             network_stack.add_titled(wifi_box, "wifi", "WiFi");
-            
+
             network_stack.notify["visible-child-name"].connect(() => {
                 network_mode = network_stack.get_visible_child_name();
             });
@@ -247,7 +258,7 @@ namespace Monita {
             box.append(network_switcher);
 
             var info_box = new Gtk.Box(Gtk.Orientation.HORIZONTAL, 24);
-            
+
             network_rx_label = new Gtk.Label("↓ 0.0 MB/s");
             network_rx_label.set_xalign(0);
             network_rx_label.add_css_class("numeric");
@@ -264,13 +275,15 @@ namespace Monita {
             network_graph.set_margin_top(8);
             box.append(network_graph);
 
-            frame.set_child(box);
+            frame.child = (box);
             return frame;
         }
 
-        private Gtk.Frame create_gpu_card() {
-            var frame = new Gtk.Frame(null);
-            
+        private He.Bin create_gpu_card() {
+            var frame = new He.Bin();
+            frame.add_css_class("x-large-radius");
+            frame.add_css_class("surface-container-lowest-bg-color");
+
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
             box.set_margin_bottom(12);
@@ -300,7 +313,7 @@ namespace Monita {
             gpu_graph.set_margin_top(8);
             box.append(gpu_graph);
 
-            frame.set_child(box);
+            frame.child = (box);
             return frame;
         }
 
@@ -315,7 +328,7 @@ namespace Monita {
             var mem = SystemUtils.get_memory_usage();
             var mem_info = SystemUtils.get_memory_info();
             memory_label.set_label("%.2f%%".printf(mem));
-            memory_details.set_label("%.2f GB / %.2f GB".printf(mem_info[0], mem_info[1]));
+            memory_details.set_label("%.2f GB / %.0f GB".printf(mem_info[0], mem_info[1]));
             memory_levelbar.set_value(mem);
             memory_graph.add_data_point(mem);
 
@@ -326,10 +339,10 @@ namespace Monita {
             } else {
                 net = SystemUtils.get_network_speed(ref prev_eth_rx, ref prev_eth_tx, "ethernet");
             }
-            
+
             network_rx_label.set_label("↓ %.2f KB/s".printf(net[0]));
             network_tx_label.set_label("↑ %.2f KB/s".printf(net[1]));
-            
+
             // Plot the maximum of RX/TX speed directly (no artificial scaling)
             double max_net = Math.fmax(net[0], net[1]);
             network_graph.add_data_point(max_net);
@@ -347,4 +360,3 @@ namespace Monita {
         }
     }
 }
-
