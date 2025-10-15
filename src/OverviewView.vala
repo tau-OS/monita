@@ -68,7 +68,7 @@ namespace Monita {
         private He.Bin create_system_info_card() {
             var frame = new He.Bin();
             frame.add_css_class("x-large-radius");
-            frame.add_css_class("surface-container-low-bg-color");
+            frame.add_css_class("surface-container-lowest-bg-color");
 
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 12);
             box.set_margin_top(12);
@@ -77,7 +77,7 @@ namespace Monita {
             box.set_margin_end(12);
 
             var title = new Gtk.Label("System Information");
-            title.add_css_class("cb-subtitle");
+            title.add_css_class("cb-title");
             title.set_xalign(0);
             box.append(title);
 
@@ -142,7 +142,12 @@ namespace Monita {
         private He.Bin create_cpu_card() {
             var frame = new He.Bin();
             frame.add_css_class("x-large-radius");
-            frame.add_css_class("surface-container-lowest-bg-color");
+            frame.add_css_class("surface-container-low-bg-color");
+
+            frame.content_color_override = true;
+            Gdk.RGBA color_rgba = { 0 };
+            color_rgba.parse("#4A7FF9");
+            frame.content_source_color = { color_rgba.red, color_rgba.green, color_rgba.blue };
 
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
@@ -180,7 +185,12 @@ namespace Monita {
         private He.Bin create_memory_card() {
             var frame = new He.Bin();
             frame.add_css_class("x-large-radius");
-            frame.add_css_class("surface-container-lowest-bg-color");
+            frame.add_css_class("surface-container-low-bg-color");
+
+            frame.content_color_override = true;
+            Gdk.RGBA color_rgba = { 0 };
+            color_rgba.parse("#5FCC6F");
+            frame.content_source_color = { color_rgba.red, color_rgba.green, color_rgba.blue };
 
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
@@ -223,7 +233,12 @@ namespace Monita {
         private He.Bin create_network_card() {
             var frame = new He.Bin();
             frame.add_css_class("x-large-radius");
-            frame.add_css_class("surface-container-lowest-bg-color");
+            frame.add_css_class("surface-container-low-bg-color");
+
+            frame.content_color_override = true;
+            Gdk.RGBA color_rgba = { 0 };
+            color_rgba.parse("#A456C9");
+            frame.content_source_color = { color_rgba.red, color_rgba.green, color_rgba.blue };
 
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
@@ -282,7 +297,12 @@ namespace Monita {
         private He.Bin create_gpu_card() {
             var frame = new He.Bin();
             frame.add_css_class("x-large-radius");
-            frame.add_css_class("surface-container-lowest-bg-color");
+            frame.add_css_class("surface-container-low-bg-color");
+
+            frame.content_color_override = true;
+            Gdk.RGBA color_rgba = { 0 };
+            color_rgba.parse("#F9B74F");
+            frame.content_source_color = { color_rgba.red, color_rgba.green, color_rgba.blue };
 
             var box = new Gtk.Box(Gtk.Orientation.VERTICAL, 8);
             box.set_margin_top(12);
